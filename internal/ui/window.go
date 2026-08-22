@@ -34,6 +34,9 @@ type App struct {
 	Ticker         *time.Ticker
 	OrderedSrc     []string
 	Colors         map[string]string
+	dragActive     bool
+	dragOffX       int
+	dragOffY       int
 }
 
 func NewApp(cfg config.Config, tariff config.Tariff, state config.State) (*App, error) {
@@ -82,13 +85,15 @@ func (a *App) Build() error {
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
 	win.Add(vbox)
 
-	// header
+	// header — wrapped in EventBox so it can be dragged when frameless
+	headerEventBox, _ := gtk.EventBoxNew()
+	vbox.PackStart(headerEventBox, false, false, 0)
 	hbox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 	hbox.SetMarginTop(6)
 	hbox.SetMarginBottom(2)
 	hbox.SetMarginStart(8)
 	hbox.SetMarginEnd(8)
-	vbox.PackStart(hbox, false, false, 0)
+	headerEventBox.Add(hbox)
 
 	header, _ := gtk.LabelNew("— W")
 	header.SetHAlign(gtk.ALIGN_START)
@@ -117,14 +122,44 @@ func (a *App) Build() error {
 		a.ShowSettings()
 	})
 
-	// drag handling when frameless
-	if a.Config.Frameless {
-		hbox.AddEvents(int(gdk.BUTTON_PRESS_MASK))
-		hbox.Connect("button-press-event", func() bool {
-			win.BeginMoveDrag(gdk.BUTTON_PRIMARY, 0, 0, 0)
+	// drag handling: allow moving window by dragging the header bar
+	// Works especially when Frameless is on (no title bar). Always installed;
+	// handler no-ops when not frameless so decorated windows keep normal behavior
+	// but header drag still works as convenience.
+	headerEventBox.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK))
+	headerEventBox.Connect("button-press-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
+		if !a.Config.Frameless {
 			return false
-		})
-	}
+		}
+		btnEv := gdk.EventButtonNewFromEvent(ev)
+		if btnEv.Button() != gdk.BUTTON_PRIMARY {
+			return false
+		}
+		// Try WM-initiated move first (Muffin/Cinnamon)
+		win.BeginMoveDrag(btnEv.Button(), int(btnEv.XRoot()), int(btnEv.YRoot()), btnEv.Time())
+		// Also set up manual fallback (in case WM doesn't handle frameless)
+		wx, wy := win.GetPosition()
+		a.dragActive = true
+		a.dragOffX = int(btnEv.XRoot()) - wx
+		a.dragOffY = int(btnEv.YRoot()) - wy
+		log.Printf("drag start at %v,%v offset %v,%v win %v,%v", btnEv.XRoot(), btnEv.YRoot(), a.dragOffX, a.dragOffY, wx, wy)
+		return false
+	})
+	headerEventBox.Connect("button-release-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
+		a.dragActive = false
+		return false
+	})
+	headerEventBox.Connect("motion-notify-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
+		if !a.dragActive || !a.Config.Frameless {
+			return false
+		}
+		motEv := gdk.EventMotionNewFromEvent(ev)
+		xRoot, yRoot := motEv.MotionValRoot()
+		nx := int(xRoot) - a.dragOffX
+		ny := int(yRoot) - a.dragOffY
+		win.Move(nx, ny)
+		return false
+	})
 
 	// graph
 	area, _ := gtk.DrawingAreaNew()
