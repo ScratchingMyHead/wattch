@@ -164,6 +164,59 @@ func (a *App) Build() error {
 		DrawHistory(cr, w, h, a.History, a.Colors, a.OrderedSrc)
 		return false
 	})
+	// tooltip: show all values for vertical slice under cursor
+	area.AddEvents(int(gdk.POINTER_MOTION_MASK | gdk.LEAVE_NOTIFY_MASK))
+	area.Connect("motion-notify-event", func(_ *gtk.DrawingArea, ev *gdk.Event) bool {
+		if len(a.History.Samples) == 0 {
+			area.SetTooltipText("")
+			return false
+		}
+		mot := gdk.EventMotionNewFromEvent(ev)
+		x, _ := mot.MotionVal()
+		w := area.GetAllocatedWidth()
+		n := len(a.History.Samples)
+		if n < 2 || w <= 0 {
+			return false
+		}
+		var idx int
+		if n < a.History.MaxPoints {
+			idx = int(x/float64(w)*float64(n-1) + 0.5)
+		} else {
+			idx = int(x/float64(w)*float64(a.History.MaxPoints-1) + 0.5)
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= n {
+			idx = n - 1
+		}
+		s := a.History.Samples[idx]
+		// build per-source breakdown sorted descending
+		type kv struct {
+			k string
+			v float64
+		}
+		var kvs []kv
+		for k, v := range s.Sources {
+			kvs = append(kvs, kv{k, v})
+		}
+		sort.Slice(kvs, func(i, j int) bool { return kvs[i].v > kvs[j].v })
+		srcParts := ""
+		tooltip := fmt.Sprintf("%s\nTotal: %.1f W", s.Time.Format("15:04:05"), s.Total)
+		for _, kv := range kvs {
+			tooltip += fmt.Sprintf("\n%s: %.1f W", kv.k, kv.v)
+			if srcParts != "" {
+				srcParts += ", "
+			}
+			srcParts += fmt.Sprintf("%s %.0fW", kv.k, kv.v)
+		}
+		area.SetTooltipText(tooltip)
+		return false
+	})
+	area.Connect("leave-notify-event", func() bool {
+		area.SetTooltipText("")
+		return false
+	})
 
 	// legend box below graph
 	legendBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
