@@ -206,29 +206,32 @@ func (a *App) Build() error {
 				a.HistoryStore.AddSample(sample.Time, sample.Total, sample.Sources, price)
 			}
 			// save state every 10s? we do every tick for simplicity but throttle
-			// update ordered sources
+			// update ordered sources — ensure distinct colours
 			if len(a.OrderedSrc) == 0 {
 				for k := range sample.Sources {
 					a.OrderedSrc = append(a.OrderedSrc, k)
 				}
 				sort.Strings(a.OrderedSrc)
-				// ensure colors assigned
-				for i, src := range a.OrderedSrc {
-					if _, ok := a.Colors[src]; !ok {
-						a.Colors[src] = palette[i%len(palette)]
-					}
-				}
+				ensureDistinctColors(a.OrderedSrc, a.Colors)
 			} else {
 				// add new sources if appeared
 				exist := map[string]bool{}
 				for _, s := range a.OrderedSrc {
 					exist[s] = true
 				}
+				changed := false
 				for k := range sample.Sources {
 					if !exist[k] {
 						a.OrderedSrc = append(a.OrderedSrc, k)
-						sort.Strings(a.OrderedSrc)
+						changed = true
 					}
+				}
+				if changed {
+					sort.Strings(a.OrderedSrc)
+					ensureDistinctColors(a.OrderedSrc, a.Colors)
+				} else {
+					// also fix any existing duplicate that may have been loaded from disk
+					ensureDistinctColors(a.OrderedSrc, a.Colors)
 				}
 			}
 			a.History.Add(sample)
@@ -293,6 +296,38 @@ func (a *App) SetShowLegend(show bool) {
 			a.LegendBox.ShowAll()
 		} else {
 			a.LegendBox.Hide()
+		}
+	}
+}
+
+func nextFreeColor(used map[string]bool) string {
+	for _, c := range palette {
+		if !used[c] {
+			return c
+		}
+	}
+	// palette exhausted — cycle
+	return palette[len(used)%len(palette)]
+}
+
+func ensureDistinctColors(ordered []string, colors map[string]string) {
+	used := map[string]bool{}
+	// first pass: keep first occurrence of each colour, reassign duplicates
+	for _, src := range ordered {
+		if col, ok := colors[src]; ok && col != "" {
+			if used[col] {
+				col = nextFreeColor(used)
+				colors[src] = col
+			}
+			used[col] = true
+		}
+	}
+	// second pass: assign missing
+	for _, src := range ordered {
+		if _, ok := colors[src]; !ok {
+			col := nextFreeColor(used)
+			colors[src] = col
+			used[col] = true
 		}
 	}
 }
