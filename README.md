@@ -1,6 +1,6 @@
 # wattch
 
-Tiny floating power monitor — like a Cinnamon desklet but a free-floating window. Shows total watts + cost since reset, with coloured per-source lines + white total.
+Tiny floating power monitor — free-floating window showing total watts + cost since reset, with coloured per-source lines + white total.
 
 Inspired by [stolk/energygraph](https://github.com/stolk/energygraph) (intel-rapl + hwmon + NVML).
 

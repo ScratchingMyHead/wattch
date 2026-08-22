@@ -34,9 +34,6 @@ type App struct {
 	Ticker         *time.Ticker
 	OrderedSrc     []string
 	Colors         map[string]string
-	dragActive     bool
-	dragOffX       int
-	dragOffY       int
 }
 
 func NewApp(cfg config.Config, tariff config.Tariff, state config.State) (*App, error) {
@@ -140,8 +137,7 @@ func (a *App) Build() error {
 	})
 
 	// drag handling: allow moving window by dragging the header bar when frameless
-	// Manual fallback only (WM BeginMoveDrag caused sticky when combined; pure manual is reliable)
-	headerEventBox.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK))
+	headerEventBox.AddEvents(int(gdk.BUTTON_PRESS_MASK))
 	headerEventBox.Connect("button-press-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
 		if !a.Config.Frameless {
 			return false
@@ -150,28 +146,7 @@ func (a *App) Build() error {
 		if btnEv.Button() != gdk.BUTTON_PRIMARY {
 			return false
 		}
-		wx, wy := win.GetPosition()
-		a.dragActive = true
-		a.dragOffX = int(btnEv.XRoot()) - wx
-		a.dragOffY = int(btnEv.YRoot()) - wy
-		return true
-	})
-	headerEventBox.Connect("button-release-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
-		btnEv := gdk.EventButtonNewFromEvent(ev)
-		if btnEv.Button() == gdk.BUTTON_PRIMARY {
-			a.dragActive = false
-		}
-		return false
-	})
-	headerEventBox.Connect("motion-notify-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
-		if !a.dragActive || !a.Config.Frameless {
-			return false
-		}
-		motEv := gdk.EventMotionNewFromEvent(ev)
-		xRoot, yRoot := motEv.MotionValRoot()
-		nx := int(xRoot) - a.dragOffX
-		ny := int(yRoot) - a.dragOffY
-		win.Move(nx, ny)
+		win.BeginMoveDrag(btnEv.Button(), int(btnEv.XRoot()), int(btnEv.YRoot()), btnEv.Time())
 		return false
 	})
 
