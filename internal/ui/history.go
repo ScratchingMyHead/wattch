@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gotk3/gotk3/cairo"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/ScratchingMyHead/wattch/internal/history"
 )
@@ -14,7 +15,10 @@ type HistoryViewer struct {
 	Window    *gtk.Window
 	Area      *gtk.DrawingArea
 	DateLabel *gtk.Label
+	HoverLabel *gtk.Label
 	Current   string // YYYY-MM-DD
+	dayData   *history.Day
+	currency  string
 }
 
 // ShowHistory opens a larger window with 30-min blocks for daily view
@@ -58,14 +62,18 @@ func (a *App) ShowHistory() {
 	area.SetVExpand(true)
 	vbox.PackStart(area, true, true, 0)
 
+	// hover detail label (below graph, above legend)
+	hoverLbl, _ := gtk.LabelNew("")
+	hoverLbl.SetHAlign(gtk.ALIGN_START)
+	hoverLbl.SetMarkup(`<i>Hover over a bar for details</i>`)
+	vbox.PackStart(hoverLbl, false, false, 0)
+
 	// legend
 	legendBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	vbox.PackStart(legendBox, false, false, 0)
 
-	hv := &HistoryViewer{Window: win, Area: area, DateLabel: dateLbl, Current: time.Now().Format("2006-01-02")}
+	hv := &HistoryViewer{Window: win, Area: area, DateLabel: dateLbl, HoverLabel: hoverLbl, Current: time.Now().Format("2006-01-02"), currency: a.Tariff.Currency}
 	a.HistoryViewer = hv
-
-	var dayData *history.Day
 
 	update := func() {
 		d, err := history.LoadDay(hv.Current)
@@ -73,7 +81,8 @@ func (a *App) ShowHistory() {
 			summaryLbl.SetText(fmt.Sprintf("Error loading %s: %v", hv.Current, err))
 			return
 		}
-		dayData = d
+		hv.dayData = d
+		hv.currency = a.Tariff.Currency
 		dateLbl.SetText(hv.Current)
 		// summary
 		totalKwh := 0.0
@@ -87,6 +96,7 @@ func (a *App) ShowHistory() {
 			}
 		}
 		summaryLbl.SetText(fmt.Sprintf("Total: %.2f kWh  •  Cost %s%.2f  •  Peak %.0f W", totalKwh, a.Tariff.Currency, totalCost, peakW))
+		hoverLbl.SetMarkup(`<i>Hover over a bar for details</i>`)
 
 		// legend
 		// collect sources present
@@ -118,17 +128,79 @@ func (a *App) ShowHistory() {
 		tLbl, _ := gtk.LabelNew("")
 		tLbl.SetMarkup(`<span foreground="white">●</span> total`)
 		legendBox.PackStart(tLbl, false, false, 0)
+		// cost legend (y2)
+		costLbl, _ := gtk.LabelNew("")
+		costLbl.SetMarkup(`<span foreground="#f1c40f">●</span> cost`)
+		legendBox.PackStart(costLbl, false, false, 0)
 		legendBox.ShowAll()
 		area.QueueDraw()
 	}
 
+	// hover handling
+	area.AddEvents(int(gdk.POINTER_MOTION_MASK | gdk.LEAVE_NOTIFY_MASK))
+	area.Connect("motion-notify-event", func(_ *gtk.DrawingArea, ev *gdk.Event) bool {
+		if hv.dayData == nil {
+			return false
+		}
+		mot := gdk.EventMotionNewFromEvent(ev)
+		x, _ := mot.MotionVal()
+		w := area.GetAllocatedWidth()
+		plotW := float64(w - 80) // 40 left + 30 right + margins
+		barW := plotW / 48.0
+		idx := int((x - 40) / barW)
+		if idx < 0 || idx >= 48 {
+			hoverLbl.SetMarkup(`<i>Hover over a bar for details</i>`)
+			area.SetTooltipText("")
+			return false
+		}
+		b := hv.dayData.Blocks[idx]
+		if b.Count == 0 {
+			hoverLbl.SetMarkup(fmt.Sprintf(`<b>%02d:%02d–%02d:%02d</b> — no data`, idx/2, (idx%2)*30, (idx/2)+((idx%2)*30+30)/60, ((idx%2)*30+30)%60))
+			area.SetTooltipText("No data for this half-hour")
+			return false
+		}
+		start := time.Unix(b.StartUnix, 0)
+		end := start.Add(30 * time.Minute)
+		// build per-source breakdown sorted
+		type kv struct {
+			k string
+			v float64
+		}
+		var kvs []kv
+		for k, v := range b.Sources {
+			kvs = append(kvs, kv{k, v})
+		}
+		sort.Slice(kvs, func(i, j int) bool { return kvs[i].v > kvs[j].v })
+		srcParts := ""
+		for i, kv := range kvs {
+			if i > 0 {
+				srcParts += ", "
+			}
+			srcParts += fmt.Sprintf("%s %.0fW", kv.k, kv.v)
+		}
+		if srcParts == "" {
+			srcParts = "—"
+		}
+		hoverText := fmt.Sprintf(`<b>%s – %s</b>  %.0fW avg  •  %.3f kWh  •  %s%.4f`,
+			start.Format("15:04"), end.Format("15:04"), b.AvgWatts, b.Kwh, hv.currency, b.Cost)
+		hoverLbl.SetMarkup(hoverText + fmt.Sprintf(`  <span foreground="#888">[%s]</span>`, srcParts))
+		tooltip := fmt.Sprintf("%s – %s\n%.0f W avg\n%.3f kWh\n%s%.4f\n%s",
+			start.Format("15:04"), end.Format("15:04"), b.AvgWatts, b.Kwh, hv.currency, b.Cost, srcParts)
+		area.SetTooltipText(tooltip)
+		return false
+	})
+	area.Connect("leave-notify-event", func() bool {
+		hoverLbl.SetMarkup(`<i>Hover over a bar for details</i>`)
+		return false
+	})
+
 	area.Connect("draw", func(_ *gtk.DrawingArea, cr *cairo.Context) bool {
 		w := area.GetAllocatedWidth()
 		h := area.GetAllocatedHeight()
-		if dayData == nil {
+		if hv.dayData == nil {
 			return false
 		}
-		drawDailyBlocks(cr, w, h, dayData, a.Colors)
+		drawDailyBlocks(cr, w, h, hv.dayData, a.Colors, hv.currency)
 		return false
 	})
 
@@ -155,22 +227,30 @@ func (a *App) ShowHistory() {
 	win.ShowAll()
 }
 
-func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[string]string) {
+func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[string]string, currency string) {
 	// background
 	cr.SetSourceRGB(0.12, 0.12, 0.12)
 	cr.Rectangle(0, 0, float64(w), float64(h))
 	cr.Fill()
 
-	// find max
+	// find max for watts (left) and cost (right y2)
 	maxW := 50.0
+	maxCost := 0.01
 	for _, b := range day.Blocks {
 		if b.AvgWatts > maxW {
 			maxW = b.AvgWatts
+		}
+		if b.Cost > maxCost {
+			maxCost = b.Cost
 		}
 	}
 	maxW *= 1.15
 	if maxW < 50 {
 		maxW = 50
+	}
+	maxCost *= 1.15
+	if maxCost < 0.01 {
+		maxCost = 0.01
 	}
 	// grid
 	cr.SetSourceRGB(0.25, 0.25, 0.25)
@@ -178,10 +258,10 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 	for i := 1; i < 4; i++ {
 		y := float64(h) * float64(i) / 4.0
 		cr.MoveTo(40, y)
-		cr.LineTo(float64(w), y)
+		cr.LineTo(float64(w)-35, y)
 		cr.Stroke()
 	}
-	// Y labels
+	// Y labels left (watts)
 	cr.SetSourceRGB(0.8, 0.8, 0.8)
 	cr.SelectFontFace("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
 	cr.SetFontSize(9)
@@ -191,31 +271,27 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 	cr.ShowText(fmt.Sprintf("%.0fW", maxW/2))
 	cr.MoveTo(4, float64(h)-4)
 	cr.ShowText("0W")
+	// Y labels right (cost) — y2
+	cr.SetSourceRGB(0.95, 0.85, 0.2) // gold for cost
+	cr.MoveTo(float64(w)-30, 12)
+	cr.ShowText(fmt.Sprintf("%s%.2f", currency, maxCost))
+	cr.MoveTo(float64(w)-30, float64(h)/2)
+	cr.ShowText(fmt.Sprintf("%s%.2f", currency, maxCost/2))
+	cr.MoveTo(float64(w)-30, float64(h)-4)
+	cr.ShowText(fmt.Sprintf("%s0", currency))
 
-	plotW := float64(w - 50)
+	plotW := float64(w - 80) // 40 left + 35 right + gaps
 	plotH := float64(h - 20)
 	barW := plotW / 48.0
-	// draw per-block bars/lines
-	// we draw stacked? Instead draw total as white line and sources as colored lines for clarity
-	// For bar view, we draw bars for total, and small dots for sources
-	// Let's draw total as bars
+	// draw per-block stacked watts bars
 	for i, b := range day.Blocks {
 		x := 40 + float64(i)*barW
 		barH := (b.AvgWatts / maxW) * plotH
 		y := float64(h) - 10 - barH
 		if b.Count == 0 {
-			// empty block - no bar, just gap
 			continue
 		}
-		// total bar in white semi
-		cr.SetSourceRGBA(1, 1, 1, 0.9)
-		cr.Rectangle(x+1, y, barW-2, barH)
-		cr.Fill()
-		// source overlays as thin lines on top? draw small colored segments inside bar proportionally?
-		// Instead draw stacked: sort sources and stack
 		stackY := y + barH
-		// compute total of sources for stacking check: should approx equal AvgWatts but total is sum of all watts (including multiple sources, total is sum, so avg per source sum = total) -> we can stack per-source contribution
-		// draw stacked colored rectangles from bottom up
 		sorted := make([]string, 0, len(b.Sources))
 		for k := range b.Sources {
 			sorted = append(sorted, k)
@@ -235,7 +311,35 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 			cr.Rectangle(x+1, stackY, barW-2, segH)
 			cr.Fill()
 		}
-		// overlay cost as text on top if bar tall enough? skip
+	}
+	// draw cost line on y2 (right axis) — gold line with dots
+	cr.SetSourceRGB(0.95, 0.85, 0.2)
+	cr.SetLineWidth(1.6)
+	first := true
+	for i, b := range day.Blocks {
+		if b.Count == 0 {
+			first = true
+			continue
+		}
+		x := 40 + float64(i)*barW + barW/2
+		y := float64(h) - 10 - (b.Cost/maxCost)*plotH
+		if first {
+			cr.MoveTo(x, y)
+			first = false
+		} else {
+			cr.LineTo(x, y)
+		}
+	}
+	cr.Stroke()
+	// cost dots
+	for i, b := range day.Blocks {
+		if b.Count == 0 {
+			continue
+		}
+		x := 40 + float64(i)*barW + barW/2
+		y := float64(h) - 10 - (b.Cost/maxCost)*plotH
+		cr.Arc(x, y, 2.2, 0, 2*3.14159)
+		cr.Fill()
 	}
 	// X labels: time
 	cr.SetSourceRGB(0.7, 0.7, 0.7)
@@ -250,5 +354,10 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 	// outline
 	cr.SetSourceRGB(0.4, 0.4, 0.4)
 	cr.Rectangle(40, 10, plotW, plotH)
+	cr.Stroke()
+	// right y2 outline hint (thin gold)
+	cr.SetSourceRGB(0.95, 0.85, 0.2)
+	cr.SetLineWidth(0.6)
+	cr.Rectangle(float64(w)-35, 10, 0, plotH)
 	cr.Stroke()
 }

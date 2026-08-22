@@ -2,8 +2,6 @@
 
 Tiny floating power monitor — free-floating window showing total watts + cost since reset, with coloured per-source lines + white total.
 
-Inspired by [stolk/energygraph](https://github.com/stolk/energygraph) (intel-rapl + hwmon + NVML).
-
 ## Sources
 
 - **intel-rapl** `/sys/class/powercap/intel-rapl:*/energy_uj` (CPU package, core, dram if present)
