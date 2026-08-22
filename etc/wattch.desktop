@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=wattch
+GenericName=Power Monitor
+Comment=Tiny floating power monitor — watts + cost with per-source graph
+Exec=wattch
+Icon=wattch
+Terminal=false
+Categories=Utility;Monitor;GTK;
+StartupWMClass=wattch
+Keywords=power;energy;watts;cost;monitor;

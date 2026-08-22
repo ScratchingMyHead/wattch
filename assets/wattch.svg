@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="118" fill="#1e1e1e" stroke="#2d2d2d" stroke-width="4"/>
+  <!-- Minimal W -->
+  <text x="128" y="162" font-family="DejaVu Sans, Sans, Cantarell, Ubuntu, sans-serif" font-size="112" font-weight="800" text-anchor="middle" fill="#ffffff" letter-spacing="-2">W</text>
+  <!-- Green accent dot -->
+  <circle cx="192" cy="66" r="16" fill="#2ecc71" stroke="#ffffff" stroke-width="3" stroke-opacity="0.9"/>
+  <!-- subtle highlight for depth -->
+  <circle cx="128" cy="128" r="118" fill="none" stroke="white" stroke-opacity="0.04" stroke-width="2"/>
+</svg>

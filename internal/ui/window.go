@@ -80,6 +80,23 @@ func (a *App) Build() error {
 	win.SetDecorated(!a.Config.Frameless)
 	win.SetKeepAbove(a.Config.AlwaysOnTop)
 	win.SetResizable(true)
+	// icon — try file paths, fall back to theme name "wattch"
+	iconPaths := []string{
+		"assets/wattch.svg",
+		"etc/icons/hicolor/48x48/apps/wattch.png",
+		"/home/rj/src/wattch/assets/wattch.svg",
+		"/home/rj/src/wattch/etc/icons/hicolor/48x48/apps/wattch.png",
+	}
+	iconSet := false
+	for _, p := range iconPaths {
+		if err := win.SetIconFromFile(p); err == nil {
+			iconSet = true
+			break
+		}
+	}
+	if !iconSet {
+		win.SetIconName("wattch")
+	}
 
 	// main vbox
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
@@ -122,11 +139,9 @@ func (a *App) Build() error {
 		a.ShowSettings()
 	})
 
-	// drag handling: allow moving window by dragging the header bar
-	// Works especially when Frameless is on (no title bar). Always installed;
-	// handler no-ops when not frameless so decorated windows keep normal behavior
-	// but header drag still works as convenience.
-	headerEventBox.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK))
+	// drag handling: allow moving window by dragging the header bar when frameless
+	// Manual fallback only (WM BeginMoveDrag caused sticky when combined; pure manual is reliable)
+	headerEventBox.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK | gdk.POINTER_MOTION_HINT_MASK))
 	headerEventBox.Connect("button-press-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
 		if !a.Config.Frameless {
 			return false
@@ -135,18 +150,17 @@ func (a *App) Build() error {
 		if btnEv.Button() != gdk.BUTTON_PRIMARY {
 			return false
 		}
-		// Try WM-initiated move first (Muffin/Cinnamon)
-		win.BeginMoveDrag(btnEv.Button(), int(btnEv.XRoot()), int(btnEv.YRoot()), btnEv.Time())
-		// Also set up manual fallback (in case WM doesn't handle frameless)
 		wx, wy := win.GetPosition()
 		a.dragActive = true
 		a.dragOffX = int(btnEv.XRoot()) - wx
 		a.dragOffY = int(btnEv.YRoot()) - wy
-		log.Printf("drag start at %v,%v offset %v,%v win %v,%v", btnEv.XRoot(), btnEv.YRoot(), a.dragOffX, a.dragOffY, wx, wy)
-		return false
+		return true
 	})
 	headerEventBox.Connect("button-release-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
-		a.dragActive = false
+		btnEv := gdk.EventButtonNewFromEvent(ev)
+		if btnEv.Button() == gdk.BUTTON_PRIMARY {
+			a.dragActive = false
+		}
 		return false
 	})
 	headerEventBox.Connect("motion-notify-event", func(_ *gtk.EventBox, ev *gdk.Event) bool {
