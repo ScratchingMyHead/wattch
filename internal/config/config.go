@@ -21,6 +21,7 @@ type Config struct {
 	HistoryS      int               `json:"history_s"`
 	Frameless     bool              `json:"frameless"`
 	AlwaysOnTop   bool              `json:"always_on_top"`
+	ShowLegend    bool              `json:"show_legend"`
 	Geometry      Geometry          `json:"geometry"`
 	Colors        map[string]string `json:"colors"`
 }
@@ -55,6 +56,18 @@ func dir() string {
 	return filepath.Join(d, "wattch")
 }
 
+func containsKey(data []byte, key string) bool {
+	// crude but sufficient: look for "key" quoted
+	needle := `"` + key + `"`
+	// use simple search
+	for i := 0; i+len(needle) <= len(data); i++ {
+		if string(data[i:i+len(needle)]) == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func ensureDir() error {
 	return os.MkdirAll(dir(), 0755)
 }
@@ -67,6 +80,7 @@ func DefaultConfig() Config {
 		HistoryS:     300,
 		Frameless:    false,
 		AlwaysOnTop:  false,
+		ShowLegend:   true,
 		Geometry:     Geometry{X: 100, Y: 100, W: 360, H: 200},
 		Colors:       map[string]string{},
 	}
@@ -94,6 +108,10 @@ func LoadConfig() (Config, error) {
 	}
 	if err := json.Unmarshal(b, &c); err != nil {
 		return DefaultConfig(), err
+	}
+	// migrate_show_legend: default true if key missing
+	if !containsKey(b, "show_legend") {
+		c.ShowLegend = true
 	}
 	if c.Currency == "" {
 		c.Currency = "$"

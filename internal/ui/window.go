@@ -23,6 +23,7 @@ type App struct {
 	GraphArea      *gtk.DrawingArea
 	SettingsBtn    *gtk.Button
 	HistoryBtn     *gtk.Button
+	LegendBox      *gtk.Box
 	Sampler        *sampler.Sampler
 	History        *History
 	HistoryStore   *history.Store
@@ -146,6 +147,10 @@ func (a *App) Build() error {
 	legendBox.SetMarginEnd(6)
 	legendBox.SetMarginBottom(4)
 	vbox.PackStart(legendBox, false, false, 0)
+	a.LegendBox = legendBox
+	if !a.Config.ShowLegend {
+		legendBox.Hide()
+	}
 	// we will populate dynamically in updateHeader
 
 	win.Connect("configure-event", func() bool {
@@ -210,27 +215,29 @@ func (a *App) Build() error {
 			glib.IdleAdd(func() {
 				a.updateHeader(sample)
 				a.GraphArea.QueueDraw()
-				// update legend
-				legendBox.GetChildren().Foreach(func(item interface{}) {
-					if w, ok := item.(*gtk.Widget); ok {
-						legendBox.Remove(w)
+				// update legend (only if visible)
+				if a.Config.ShowLegend {
+					legendBox.GetChildren().Foreach(func(item interface{}) {
+						if w, ok := item.(*gtk.Widget); ok {
+							legendBox.Remove(w)
+						}
+					})
+					for i, src := range a.OrderedSrc {
+						lbl, _ := gtk.LabelNew(src)
+						c := palette[i%len(palette)]
+						if col, ok := a.Colors[src]; ok {
+							c = col
+						}
+						lbl.SetMarkup(fmt.Sprintf(`<span foreground="%s">●</span> %s`, c, src))
+						lbl.SetMarginEnd(8)
+						legendBox.PackStart(lbl, false, false, 0)
 					}
-				})
-				for i, src := range a.OrderedSrc {
-					lbl, _ := gtk.LabelNew(src)
-					c := palette[i%len(palette)]
-					if col, ok := a.Colors[src]; ok {
-						c = col
-					}
-					lbl.SetMarkup(fmt.Sprintf(`<span foreground="%s">●</span> %s`, c, src))
-					lbl.SetMarginEnd(8)
-					legendBox.PackStart(lbl, false, false, 0)
+					// total white
+					tLbl, _ := gtk.LabelNew("")
+					tLbl.SetMarkup(`<span foreground="white">●</span> total`)
+					legendBox.PackStart(tLbl, false, false, 0)
+					legendBox.ShowAll()
 				}
-				// total white
-				tLbl, _ := gtk.LabelNew("")
-				tLbl.SetMarkup(`<span foreground="white">●</span> total`)
-				legendBox.PackStart(tLbl, false, false, 0)
-				legendBox.ShowAll()
 			})
 		}
 	}()
@@ -250,6 +257,20 @@ func (a *App) updateHeader(s sampler.Sample) {
 	a.CostLabel.SetText(costStr)
 	// update window title for taskbar?
 	a.Window.SetTitle(fmt.Sprintf("wattch — %.1f W", s.Total))
+}
+
+func (a *App) SetShowLegend(show bool) {
+	a.Config.ShowLegend = show
+	_ = config.SaveConfig(a.Config)
+	if a.LegendBox != nil {
+		if show {
+			a.LegendBox.Show()
+			// trigger immediate redraw of legend on next sample; also force current redraw
+			a.LegendBox.ShowAll()
+		} else {
+			a.LegendBox.Hide()
+		}
+	}
 }
 
 func (a *App) Close() {

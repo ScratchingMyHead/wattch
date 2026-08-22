@@ -60,6 +60,12 @@ func (a *App) ShowSettings() {
 	topChk, _ := gtk.CheckButtonNewWithLabel("Always on top")
 	topChk.SetActive(a.Config.AlwaysOnTop)
 	genBox.PackStart(topChk, false, false, 0)
+	legendChk, _ := gtk.CheckButtonNewWithLabel("Show legend bar (colours + total)")
+	legendChk.SetActive(a.Config.ShowLegend)
+	legendChk.Connect("toggled", func() {
+		a.SetShowLegend(legendChk.GetActive())
+	})
+	genBox.PackStart(legendChk, false, false, 0)
 
 	// RAPL status
 	raplBox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 4)
@@ -288,11 +294,13 @@ func (a *App) ShowSettings() {
 		a.Tariff.DefaultPrice = priceSpin.GetValue()
 		a.Config.Frameless = frameChk.GetActive()
 		a.Config.AlwaysOnTop = topChk.GetActive()
+		a.Config.ShowLegend = legendChk.GetActive()
 		_ = config.SaveTariff(a.Tariff)
 		_ = config.SaveConfig(a.Config)
-		// apply window decor
+		// apply window decor + legend
 		a.Window.SetDecorated(!a.Config.Frameless)
 		a.Window.SetKeepAbove(a.Config.AlwaysOnTop)
+		a.SetShowLegend(a.Config.ShowLegend)
 		a.Config.Currency = a.Tariff.Currency
 		_ = config.SaveConfig(a.Config)
 		dialog.Destroy()
