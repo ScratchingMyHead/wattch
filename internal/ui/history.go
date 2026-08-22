@@ -128,9 +128,9 @@ func (a *App) ShowHistory() {
 		tLbl, _ := gtk.LabelNew("")
 		tLbl.SetMarkup(`<span foreground="white">●</span> total`)
 		legendBox.PackStart(tLbl, false, false, 0)
-		// cost legend (y2)
+		// cost legend (y2) — purple to avoid yellow bar collision
 		costLbl, _ := gtk.LabelNew("")
-		costLbl.SetMarkup(`<span foreground="#f1c40f">●</span> cost`)
+		costLbl.SetMarkup(`<span foreground="#8e44ad">●</span> cost`)
 		legendBox.PackStart(costLbl, false, false, 0)
 		legendBox.ShowAll()
 		area.QueueDraw()
@@ -271,8 +271,8 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 	cr.ShowText(fmt.Sprintf("%.0fW", maxW/2))
 	cr.MoveTo(4, float64(h)-4)
 	cr.ShowText("0W")
-	// Y labels right (cost) — y2
-	cr.SetSourceRGB(0.95, 0.85, 0.2) // gold for cost
+	// Y labels right (cost) — y2 purple
+	cr.SetSourceRGB(0.56, 0.27, 0.68) // #8e44ad purple
 	cr.MoveTo(float64(w)-30, 12)
 	cr.ShowText(fmt.Sprintf("%s%.2f", currency, maxCost))
 	cr.MoveTo(float64(w)-30, float64(h)/2)
@@ -312,9 +312,9 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 			cr.Fill()
 		}
 	}
-	// draw cost line on y2 (right axis) — gold line with dots
-	cr.SetSourceRGB(0.95, 0.85, 0.2)
-	cr.SetLineWidth(1.6)
+	// draw cost line on y2 (right axis) — purple line with dots
+	cr.SetSourceRGB(0.56, 0.27, 0.68) // #8e44ad
+	cr.SetLineWidth(1.8)
 	first := true
 	for i, b := range day.Blocks {
 		if b.Count == 0 {
@@ -355,8 +355,8 @@ func drawDailyBlocks(cr *cairo.Context, w, h int, day *history.Day, colors map[s
 	cr.SetSourceRGB(0.4, 0.4, 0.4)
 	cr.Rectangle(40, 10, plotW, plotH)
 	cr.Stroke()
-	// right y2 outline hint (thin gold)
-	cr.SetSourceRGB(0.95, 0.85, 0.2)
+	// right y2 outline hint (thin purple)
+	cr.SetSourceRGB(0.56, 0.27, 0.68)
 	cr.SetLineWidth(0.6)
 	cr.Rectangle(float64(w)-35, 10, 0, plotH)
 	cr.Stroke()
