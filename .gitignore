@@ -1,0 +1,7 @@
+wattch
+/wattch
+/bin/
+/build/
+*.o
+*.so
+/vendor/
