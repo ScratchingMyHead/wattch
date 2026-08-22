@@ -99,14 +99,21 @@ func (a *App) Build() error {
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
 	win.Add(vbox)
 
+	// compact header styling — less white space
+	css, _ := gtk.CssProviderNew()
+	_ = css.LoadFromData("button { padding: 1px 5px; min-height: 0; min-width: 0; margin: 0; }")
+	if scr, err := gdk.ScreenGetDefault(); err == nil && scr != nil {
+		gtk.AddProviderForScreen(scr, css, gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+	}
+
 	// header — wrapped in EventBox so it can be dragged when frameless
 	headerEventBox, _ := gtk.EventBoxNew()
 	vbox.PackStart(headerEventBox, false, false, 0)
-	hbox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	hbox.SetMarginTop(6)
-	hbox.SetMarginBottom(2)
-	hbox.SetMarginStart(8)
-	hbox.SetMarginEnd(8)
+	hbox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 2)
+	hbox.SetMarginTop(2)
+	hbox.SetMarginBottom(1)
+	hbox.SetMarginStart(4)
+	hbox.SetMarginEnd(4)
 	headerEventBox.Add(hbox)
 
 	header, _ := gtk.LabelNew("— W")
@@ -117,11 +124,16 @@ func (a *App) Build() error {
 
 	costLbl, _ := gtk.LabelNew("")
 	costLbl.SetHAlign(gtk.ALIGN_END)
+	costLbl.SetMarginStart(4)
+	costLbl.SetMarginEnd(4)
+	costLbl.SetTooltipText("Cost since last reset")
 	a.CostLabel = costLbl
 	hbox.PackStart(costLbl, false, false, 0)
 
 	histBtn, _ := gtk.ButtonNewWithLabel("◨")
 	histBtn.SetTooltipText("History (30-min daily blocks)")
+	histBtn.SetMarginTop(0)
+	histBtn.SetMarginBottom(0)
 	a.HistoryBtn = histBtn
 	hbox.PackStart(histBtn, false, false, 0)
 	histBtn.Connect("clicked", func() {
@@ -130,6 +142,8 @@ func (a *App) Build() error {
 
 	setBtn, _ := gtk.ButtonNewWithLabel("⚙")
 	setBtn.SetTooltipText("Settings")
+	setBtn.SetMarginTop(0)
+	setBtn.SetMarginBottom(0)
 	a.SettingsBtn = setBtn
 	hbox.PackStart(setBtn, false, false, 0)
 	setBtn.Connect("clicked", func() {
@@ -333,8 +347,9 @@ func (a *App) updateHeader(s sampler.Sample) {
 	}
 	a.HeaderLabel.SetMarkup(fmt.Sprintf(`<b>%s</b>`, totalStr))
 	since := time.Unix(a.Accum.State.SinceUnix, 0).Format("2006-01-02 15:04")
-	costStr := fmt.Sprintf("%s%.2f since %s", a.Tariff.Currency, a.Accum.State.AccumCost, since)
-	a.CostLabel.SetText(costStr)
+	costStr := fmt.Sprintf("%s%.2f", a.Tariff.Currency, a.Accum.State.AccumCost)
+	a.CostLabel.SetMarkup(fmt.Sprintf(`<b>%s</b>`, costStr))
+	a.CostLabel.SetTooltipText(fmt.Sprintf("Since %s • %.3f kWh • %s%.2f", since, a.Accum.State.AccumKwh, a.Tariff.Currency, a.Accum.State.AccumCost))
 	// update window title for taskbar?
 	a.Window.SetTitle(fmt.Sprintf("wattch — %.1f W", s.Total))
 }
