@@ -1,1 +1,2 @@
-SUBSYSTEM=="powercap", MODE="0444"
+SUBSYSTEM=="powercap", KERNEL=="energy_uj", MODE="0444"
+SUBSYSTEM=="powercap", ACTION=="add", RUN+="/bin/chmod 444 /sys%p/energy_uj"
